@@ -1,5 +1,35 @@
 import networkx as nx
+import itertools
 import unittest
+
+
+def pagerank_edgetypes_indirect(D, edgetype_scale, indirect_nodes, max_iter=100, tol=1.0e-6, weight='weight'):
+    W = nx.stochastic_graph(D, weight=weight)
+    N = W.number_of_nodes()
+
+    direct_nodes = [a for a in W if a not in indirect_nodes]
+    x = dict.fromkeys(direct_nodes, 1.0 / len(direct_nodes))
+    p = dict.fromkeys(direct_nodes, 1.0 / len(direct_nodes))
+
+    for _ in range(max_iter):
+        xlast = x
+        x = dict.fromkeys(xlast.keys(), 0)
+        weight_to_distribute = sum([(xlast[n] * W[n][nbr]['weight'] * edgetype_scale[W[n][nbr]['type']]) for n in x for nbr in W[n]])
+        undistributed_weight = 1 - weight_to_distribute
+        for n in x:
+            for nbr in W[n]:
+                if nbr in indirect_nodes:
+                    contribution = xlast[n] * W[n][nbr][weight] * edgetype_scale[W[n][nbr]['type']] / len(W[nbr])
+                    for nbr_adj in W[nbr]:
+                        x[nbr_adj] += contribution
+                else:
+                    x[nbr] += xlast[n] * W[n][nbr][weight] * edgetype_scale[W[n][nbr]['type']]
+            x[n] += undistributed_weight * p.get(n, 0)
+
+        err = sum([abs(x[n] - xlast[n]) for n in x])
+        if err < N * tol:
+            return x
+    raise nx.PowerIterationFailedConvergence(max_iter)
 
 
 def pagerank_edgetypes(D, edgetype_scale, max_iter=100, tol=1.0e-6, weight='weight'):
@@ -163,4 +193,23 @@ class EdgeTypePageRankTest(unittest.TestCase):
         r = pagerank_edgetypes(g, edge_type_scale)
         assert ([k for k, v in sorted(r.iteritems(), key=lambda (k, v): v, reverse=True)] ==
                 ['D', 'B', 'I', 'H', 'E', 'C', 'A', 'F', 'J', 'G'])
+
+    def test_indirect_graph(self):
+        g = nx.DiGraph()
+        edges = [('A', 'area1', {'type': 'area'}),
+                 ('B', 'area1', {'type': 'area'}),
+                 ('C', 'area1', {'type': 'area'}),
+                 ('D', 'area1', {'type': 'area'}),
+                 ('E', 'area1', {'type': 'area'}),
+                 ('F', 'area2', {'type': 'area'}),
+                 ('G', 'area2', {'type': 'area'})]
+        indirect_nodes = set([e[1] for e in edges])
+        bidirectional_edges = edges + [(e[1], e[0], e[2]) for e in edges]
+        edge_types = set([attr['type'] for (_, _, attr) in edges])
+        edge_type_scale = {t: 1.0 / len([e for e in edges if e[2]['type'] == t]) for t in edge_types}
+        g.add_edges_from(bidirectional_edges)
+        r = pagerank_edgetypes_indirect(g, edge_type_scale, indirect_nodes)
+        assert max([abs(a - b) for (a, b) in itertools.permutations(set(r.values()), 2)]) < 1e-15
+        assert sum(r.values()) == 1
+        assert set(r.keys()).intersection(set(indirect_nodes)) == set()
 
