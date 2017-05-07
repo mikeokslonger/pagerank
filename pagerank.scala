@@ -36,7 +36,6 @@ object SuperPageRank {
         val diff = previousRankGraph.vertices.join(rankGraph.vertices).map{case (vertexId, (last, now)) => Math.abs(last - now)}.collect.sum
         println("Iteration: %s, Diff: %s".format(iteration, diff))
         if(diff < N * tol){
-          println("Done")
           return rankGraph
         }
 
@@ -87,7 +86,6 @@ object SuperPageRank {
       val diff = previousRankGraph.vertices.join(rankGraph.vertices).map{case (vertexId, (last, now)) => Math.abs(last - now)}.collect.sum
       println("Iteration: %s, Diff: %s".format(iteration, diff))
       if(diff < N * tol){
-        println("Done")
         return rankGraph
       }
 
