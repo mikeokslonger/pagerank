@@ -12,7 +12,7 @@ def pagerank_edgetypes(D, edgetype_scale, max_iter=100, tol=1.0e-6, weight='weig
 
     for _ in range(max_iter):
         xlast = x
-        x = dict.fromkeys(xlast.keys(), 0)
+        x = dict.fromkeys(xlast.keys(), 0.0)
         weight_to_distribute = sum([(xlast[n] * W[n][nbr]['weight'] * edgetype_scale[W[n][nbr]['type']]) for n in x for nbr in W[n]])
         undistributed_weight = 1 - weight_to_distribute
         for n in x:
@@ -36,7 +36,7 @@ def pagerank_edgetypes_indirect(D, edgetype_scale, indirect_nodes, max_iter=100,
 
     for _ in range(max_iter):
         xlast = x
-        x = dict.fromkeys(xlast.keys(), 0)
+        x = dict.fromkeys(xlast.keys(), 0.0)
         weight_to_distribute = sum([(xlast[n] * W[n][nbr]['weight'] * edgetype_scale[W[n][nbr]['type']]) for n in x for nbr in W[n]])
         undistributed_weight = 1 - weight_to_distribute
         for n in x:
@@ -212,4 +212,112 @@ class EdgeTypePageRankTest(unittest.TestCase):
         assert max([abs(a - b) for (a, b) in itertools.permutations(set(r.values()), 2)]) < 1e-15
         assert sum(r.values()) == 1
         assert set(r.keys()).intersection(set(indirect_nodes)) == set()
-    
+
+    def test_indirect_graph_equality(self):
+        def get_indirect():
+            g = nx.DiGraph()
+            edges = [('A', 'area1', {'type': 'area'}),
+                     ('B', 'area1', {'type': 'area'}),
+                     ('C', 'area1', {'type': 'area'})]
+            indirect_nodes = set([e[1] for e in edges])
+            bidirectional_edges = edges + [(e[1], e[0], e[2]) for e in edges]
+            edge_types = set([attr['type'] for (_, _, attr) in edges])
+            edge_type_scale = {t: 1.0 / len([e for e in edges if e[2]['type'] == t]) for t in edge_types}
+            g.add_edges_from(bidirectional_edges)
+            r = pagerank_edgetypes_indirect(g, edge_type_scale, indirect_nodes)
+            return r
+        def get_direct():
+            g = nx.DiGraph()
+            edges = [('A', 'B', {'type': 't'}),
+                     ('B', 'A', {'type': 't'}),
+                     ('A', 'C', {'type': 't'}),
+                     ('C', 'A', {'type': 't'}),
+                     ('B', 'C', {'type': 't'}),
+                     ('C', 'B', {'type': 't'})]
+            bidirectional_edges = edges + [(e[1], e[0], e[2]) for e in edges]
+            edge_types = set([attr['type'] for (_, _, attr) in edges])
+            edge_type_scale = {t: 1.0 / len([e for e in edges if e[2]['type'] == t]) for t in edge_types}
+            g.add_edges_from(bidirectional_edges)
+            r = pagerank_edgetypes(g, edge_type_scale)
+            return r
+
+        indirect = get_indirect()
+        direct = get_direct()
+        tol = 0.0000000001
+        assert sorted(direct.keys()) == sorted(indirect.keys())
+        assert all([abs(direct[k] - indirect[k]) < tol for k in sorted(direct.keys())])
+
+    def test_indirect_graph_equality_multiple(self):
+        def get_indirect():
+            g = nx.DiGraph()
+            edges = [('A', 'area1', {'type': 'area'}),
+                     ('B', 'area1', {'type': 'area'}),
+                     ('C', 'area1', {'type': 'area'}),
+                     ('D', 'area2', {'type': 'area'}),
+                     ('E', 'area2', {'type': 'area'})]
+            indirect_nodes = set([e[1] for e in edges])
+            bidirectional_edges = edges + [(e[1], e[0], e[2]) for e in edges]
+            edge_types = set([attr['type'] for (_, _, attr) in edges])
+            edge_type_scale = {t: 1.0 / len([e for e in edges if e[2]['type'] == t]) for t in edge_types}
+            g.add_edges_from(bidirectional_edges)
+            r = pagerank_edgetypes_indirect(g, edge_type_scale, indirect_nodes)
+            return r
+        def get_direct():
+            g = nx.DiGraph()
+            edges = [('A', 'B', {'type': 't'}),
+                     ('B', 'A', {'type': 't'}),
+                     ('A', 'C', {'type': 't'}),
+                     ('C', 'A', {'type': 't'}),
+                     ('B', 'C', {'type': 't'}),
+                     ('C', 'B', {'type': 't'}),
+                     ('D', 'E', {'type': 't'}),
+                     ('E', 'D', {'type': 't'})]
+            bidirectional_edges = edges + [(e[1], e[0], e[2]) for e in edges]
+            edge_types = set([attr['type'] for (_, _, attr) in edges])
+            edge_type_scale = {t: 1.0 / len([e for e in edges if e[2]['type'] == t]) for t in edge_types}
+            g.add_edges_from(bidirectional_edges)
+            r = pagerank_edgetypes(g, edge_type_scale)
+            return r
+
+        indirect = get_indirect()
+        direct = get_direct()
+        tol = 0.0000000001
+        assert sorted(direct.keys()) == sorted(indirect.keys())
+        assert all([abs(direct[k] - indirect[k]) < tol for k in sorted(direct.keys())])
+
+    # Does not behave completely as expected due to nx.stochastic_graph not being implemented for MultiGraphs
+    # which we would have to use here.
+    def test_indirect_graph_equality_direct_effects(self):
+        def get_indirect():
+            g = nx.DiGraph()
+            edges = [('A', 'area1', {'type': 'area'}),
+                     ('B', 'area1', {'type': 'area'}),
+                     ('C', 'area1', {'type': 'area'}),
+                     ('A', 'B', {'type': 'friend'})]
+            indirect_nodes = set([e[1] for e in edges if e[2]['type'] == 'area'])
+            bidirectional_edges = edges + [(e[1], e[0], e[2]) for e in edges if e[1] in indirect_nodes]
+            edge_types = set([attr['type'] for (_, _, attr) in edges])
+            edge_type_scale = {t: 1.0 / len([e for e in bidirectional_edges if e[2]['type'] == t]) for t in edge_types}
+            g.add_edges_from(bidirectional_edges)
+            r = pagerank_edgetypes_indirect(g, edge_type_scale, indirect_nodes)
+            return r
+        def get_direct():
+            g = nx.DiGraph()
+            edges = [('A', 'B', {'type': 't'}),
+                     ('B', 'A', {'type': 't'}),
+                     ('A', 'C', {'type': 't'}),
+                     ('C', 'A', {'type': 't'}),
+                     ('B', 'C', {'type': 't'}),
+                     ('C', 'B', {'type': 't'}),
+                     ('A', 'B', {'type': 'direct'})]
+            edge_types = set([attr['type'] for (_, _, attr) in edges])
+            edge_type_scale = {t: 1.0 / len([e for e in edges if e[2]['type'] == t]) for t in edge_types}
+            g.add_edges_from(edges)
+            r = pagerank_edgetypes(g, edge_type_scale)
+            return r
+
+        indirect = get_indirect()
+        direct = get_direct()
+        assert sorted(direct.keys()) == sorted(indirect.keys())
+        assert ([k for k, v in sorted(indirect.iteritems(), key=lambda (k, v): v, reverse=True)] ==
+                [k for k, v in sorted(direct.iteritems(), key=lambda (k, v): v, reverse=True)])
