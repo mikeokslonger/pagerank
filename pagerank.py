@@ -3,6 +3,29 @@ import itertools
 import unittest
 
 
+def pagerank_edgetypes(D, edgetype_scale, max_iter=100, tol=1.0e-6, weight='weight'):
+    W = nx.stochastic_graph(D, weight=weight)
+    N = W.number_of_nodes()
+
+    x = dict.fromkeys(W, 1.0 / N)
+    p = dict.fromkeys(W, 1.0 / N)
+
+    for _ in range(max_iter):
+        xlast = x
+        x = dict.fromkeys(xlast.keys(), 0)
+        weight_to_distribute = sum([(xlast[n] * W[n][nbr]['weight'] * edgetype_scale[W[n][nbr]['type']]) for n in x for nbr in W[n]])
+        undistributed_weight = 1 - weight_to_distribute
+        for n in x:
+            for nbr in W[n]:
+                x[nbr] += xlast[n] * W[n][nbr][weight] * edgetype_scale[W[n][nbr]['type']]
+            x[n] += undistributed_weight * p.get(n, 0)
+
+        err = sum([abs(x[n] - xlast[n]) for n in x])
+        if err < N * tol:
+            return x
+    raise nx.PowerIterationFailedConvergence(max_iter)
+
+
 def pagerank_edgetypes_indirect(D, edgetype_scale, indirect_nodes, max_iter=100, tol=1.0e-6, weight='weight'):
     W = nx.stochastic_graph(D, weight=weight)
     N = W.number_of_nodes()
@@ -24,29 +47,6 @@ def pagerank_edgetypes_indirect(D, edgetype_scale, indirect_nodes, max_iter=100,
                         x[nbr_adj] += contribution
                 else:
                     x[nbr] += xlast[n] * W[n][nbr][weight] * edgetype_scale[W[n][nbr]['type']]
-            x[n] += undistributed_weight * p.get(n, 0)
-
-        err = sum([abs(x[n] - xlast[n]) for n in x])
-        if err < N * tol:
-            return x
-    raise nx.PowerIterationFailedConvergence(max_iter)
-
-
-def pagerank_edgetypes(D, edgetype_scale, max_iter=100, tol=1.0e-6, weight='weight'):
-    W = nx.stochastic_graph(D, weight=weight)
-    N = W.number_of_nodes()
-
-    x = dict.fromkeys(W, 1.0 / N)
-    p = dict.fromkeys(W, 1.0 / N)
-
-    for _ in range(max_iter):
-        xlast = x
-        x = dict.fromkeys(xlast.keys(), 0)
-        weight_to_distribute = sum([(xlast[n] * W[n][nbr]['weight'] * edgetype_scale[W[n][nbr]['type']]) for n in x for nbr in W[n]])
-        undistributed_weight = 1 - weight_to_distribute
-        for n in x:
-            for nbr in W[n]:
-                x[nbr] += xlast[n] * W[n][nbr][weight] * edgetype_scale[W[n][nbr]['type']]
             x[n] += undistributed_weight * p.get(n, 0)
 
         err = sum([abs(x[n] - xlast[n]) for n in x])
@@ -212,4 +212,4 @@ class EdgeTypePageRankTest(unittest.TestCase):
         assert max([abs(a - b) for (a, b) in itertools.permutations(set(r.values()), 2)]) < 1e-15
         assert sum(r.values()) == 1
         assert set(r.keys()).intersection(set(indirect_nodes)) == set()
-
+    
